@@ -1,0 +1,11 @@
+{
+  "name": "telegram_bot",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "bot.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "license": "ISC"
+}
