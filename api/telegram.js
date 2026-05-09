@@ -64,38 +64,126 @@ function detectGroupType(chatTitle = "") {
     return "unknown";
 }
 
-function buildProfileId(msg) {
-    const text = getProfileText(msg);
-    const normalizedText = normalizeText(text);
-    const photoIds = getPhotoUniqueIds(msg);
-    const origin = msg.forward_origin;
-
-    // Найкращий варіант: Telegram дав origin channel + original message_id
-    if (origin?.type === "channel" && origin?.chat?.id && origin?.message_id) {
-        return {
-            id: `tg_channel_${origin.chat.id}_${origin.message_id}`,
-            strategy: "forward_origin_channel",
-        };
-    }
-
-    // Якщо origin є, але без message_id
-    if (origin?.type) {
-        const base = [origin.type, origin.date || "", origin.sender_user?.id || "", origin.sender_user_name || "", origin.sender_chat?.id || "", normalizedText, photoIds.join("_")].join("|");
-
-        return {
-            id: `tg_origin_${hash(base)}`,
-            strategy: "forward_origin_fallback",
-        };
-    }
-
-    // Fallback: текст анкети + фото
-    const fallbackBase = [normalizedText, photoIds.join("_")].join("|");
-
-    return {
-        id: `profile_${hash(fallbackBase)}`,
-        strategy: "text_photo_fallback",
-    };
-}
+function cleanProfileValue(value = "") {
+	return String(value)
+	  .toLowerCase()
+	  .normalize("NFKC")
+	  .replace(/[’`]/g, "'")
+	  .replace(/ё/g, "е")
+	  .replace(/[^\p{L}\p{N}\s:'-]/gu, " ")
+	  .replace(/\s+/g, " ")
+	  .trim();
+  }
+  
+  function normalizeCity(city = "") {
+	const c = cleanProfileValue(city);
+  
+	if (c === "киев" || c === "kiev" || c === "kyiv") return "київ";
+  
+	return c;
+  }
+  
+  function getField(text = "", labels = []) {
+	const lines = String(text)
+	  .split("\n")
+	  .map((line) => line.trim())
+	  .filter(Boolean);
+  
+	for (const line of lines) {
+	  for (const label of labels) {
+		const re = new RegExp(`${label}\\s*:\\s*(.+)$`, "i");
+		const match = line.match(re);
+  
+		if (match?.[1]) {
+		  return match[1].trim();
+		}
+	  }
+	}
+  
+	return "";
+  }
+  
+  function getAbout(text = "") {
+	const match = String(text).match(/(?:про себе|о себе)\s*:\s*([\s\S]+)/i);
+	return match?.[1]?.trim() || "";
+  }
+  
+  function getProfileBase(text = "") {
+	const name = cleanProfileValue(
+	  getField(text, ["ім['’`]?я", "имя", "name"])
+	);
+  
+	const age = cleanProfileValue(
+	  getField(text, ["вік", "возраст", "age"])
+	);
+  
+	const city = normalizeCity(
+	  getField(text, ["місто", "город", "city"])
+	);
+  
+	const about = cleanProfileValue(getAbout(text));
+  
+	return [
+	  `name:${name}`,
+	  `age:${age}`,
+	  `city:${city}`,
+	  `about:${about}`
+	].join("|");
+  }
+  
+  function getMainPhotoUniqueId(msg) {
+	if (!Array.isArray(msg?.photo) || !msg.photo.length) return "";
+  
+	// беремо найбільшу версію фото
+	const biggest = [...msg.photo].sort((a, b) => {
+	  const aSize = (a.width || 0) * (a.height || 0);
+	  const bSize = (b.width || 0) * (b.height || 0);
+	  return bSize - aSize;
+	})[0];
+  
+	return biggest?.file_unique_id || "";
+  }
+  
+  function buildProfileId(msg) {
+	const text = getProfileText(msg);
+	const profileBase = getProfileBase(text);
+  
+	const mainPhotoUniqueId = getMainPhotoUniqueId(msg);
+	const allPhotoUniqueIds = getPhotoUniqueIds(msg);
+  
+	const origin = msg.forward_origin;
+  
+	// ✅ ГОЛОВНИЙ ID — тільки з анкети
+	const profileId = `profile_${hash(profileBase)}`;
+  
+	// ✅ Допоміжний ID фото
+	const mediaId = mainPhotoUniqueId
+	  ? `media_${hash(mainPhotoUniqueId)}`
+	  : null;
+  
+	// ✅ ID конкретного форварду, не для дубліката
+	const sourceBase = [
+	  origin?.type || "",
+	  origin?.sender_user?.id || "",
+	  origin?.sender_user?.username || "",
+	  origin?.date || "",
+	  msg.chat?.id || "",
+	  msg.message_id || ""
+	].join("|");
+  
+	const sourceId = `source_${hash(sourceBase)}`;
+  
+	return {
+	  id: profileId,
+	  profileId,
+	  mediaId,
+	  sourceId,
+	  strategy: "profile_text_hash",
+	  profileBase,
+	  mainPhotoUniqueId,
+	  allPhotoUniqueIds
+	};
+  }
 
 async function saveProfile(profile) {
     if (!AI_CHECK_API) return null;
@@ -136,25 +224,41 @@ async function handleMessage(msg) {
 
     const stable = buildProfileId(msg);
 
-    const profile = {
-        profileId: stable.id,
-        strategy: stable.strategy,
 
-        groupType,
+	const profile = {
+		profileId: stable.profileId,
+		strategy: stable.strategy,
 
-        chatId: chat.id,
-        chatTitle: chat.title || "",
+		mediaId: stable.mediaId,
+		sourceId: stable.sourceId,
 
-        messageId: msg.message_id,
-        mediaGroupId: msg.media_group_id || null,
+		groupType,
 
-        text,
-        photoUniqueIds,
+		chatId: chat.id,
+		chatTitle: chat.title || "",
 
-        forwardOrigin: msg.forward_origin || null,
+		messageId: msg.message_id,
+		mediaGroupId: msg.media_group_id || null,
 
-        description: [`group:${groupType}`, `chat:${chat.title || chat.id}`, `strategy:${stable.strategy}`, `text:${normalizeText(text)}`, `photos:${photoUniqueIds.join(",")}`].join("|"),
-    };
+		text,
+		profileBase: stable.profileBase,
+
+		photoUniqueIds,
+		mainPhotoUniqueId: stable.mainPhotoUniqueId,
+
+		forwardOrigin: msg.forward_origin || null,
+
+		description: [
+			`group:${groupType}`,
+			`chat:${chat.title || chat.id}`,
+			`strategy:${stable.strategy}`,
+			`profileId:${stable.profileId}`,
+			`mediaId:${stable.mediaId || ""}`,
+			`sourceId:${stable.sourceId || ""}`,
+			`profileBase:${stable.profileBase}`,
+			`photos:${photoUniqueIds.join(",")}`
+		].join("|")
+		};
 
     console.log("NEW PROFILE:");
     console.log(JSON.stringify(profile, null, 2));
