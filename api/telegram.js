@@ -2,6 +2,8 @@ import crypto from "crypto";
 
 const AI_CHECK_API = process.env.AI_CHECK_API;
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
+const BOT_TOKEN = process.env.BOT_TOKEN;
+const TG_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
 function hash(value) {
   return crypto
@@ -11,6 +13,26 @@ function hash(value) {
     .slice(0, 16);
 }
 
+async function sendTelegramDebug(chatId, text) {
+	if (!BOT_TOKEN || !chatId) return;
+  
+	try {
+	  await fetch(`${TG_API}/sendMessage`, {
+		method: "POST",
+		headers: {
+		  "Content-Type": "application/json"
+		},
+		body: JSON.stringify({
+		  chat_id: chatId,
+		  text: text.slice(0, 3500),
+		  disable_notification: true
+		})
+	  });
+	} catch (e) {
+	  console.error("DEBUG SEND ERROR:", e.message);
+	}
+  }
+  
 function normalizeText(text = "") {
   return String(text)
     .toLowerCase()
@@ -190,13 +212,53 @@ export default async function handler(req, res) {
       });
     }
 
-    const update = req.body;
+	const update = req.body;
 
-    if (update.message) {
-      await handleMessage(update.message);
-    }
+	const updateType =
+	update.message
+		? "message"
+		: update.channel_post
+		? "channel_post"
+		: update.edited_channel_post
+			? "edited_channel_post"
+			: "unknown";
 
-    return res.status(200).json({ ok: true });
+	const msg =
+	update.message ||
+	update.channel_post ||
+	update.edited_channel_post;
+
+	const text = msg?.text || msg?.caption || "";
+
+	const debug = {
+	updateType,
+	chatId: msg?.chat?.id,
+	chatTitle: msg?.chat?.title,
+	messageId: msg?.message_id,
+	hasText: !!text,
+	textPreview: text.slice(0, 300),
+	hasPhoto: Array.isArray(msg?.photo),
+	photoCount: msg?.photo?.length || 0,
+	hasForwardOrigin: !!msg?.forward_origin,
+	forwardOrigin: msg?.forward_origin || null
+	};
+
+	// 🔥 буде видно, якщо поставити фільтр Error
+	console.error("TG_DEBUG:", JSON.stringify(debug, null, 2));
+
+	// щоб не було безкінечного циклу від debug-повідомлень
+	if (msg?.chat?.id && !text.startsWith("BOT DEBUG")) {
+	await sendTelegramDebug(
+		msg.chat.id,
+		`BOT DEBUG\n\n${JSON.stringify(debug, null, 2)}`
+	);
+	}
+
+	if (msg && !text.startsWith("BOT DEBUG")) {
+	await handleMessage(msg);
+	}
+
+	return res.status(200).json({ ok: true, updateType });
   } catch (error) {
     console.error("telegram webhook error:", error);
 
