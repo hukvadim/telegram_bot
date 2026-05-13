@@ -9,33 +9,36 @@ function hash(value) {
     return crypto.createHash("sha256").update(String(value)).digest("hex").slice(0, 16);
 }
 
-async function sendTelegramDebug(chatId, text) {
+async function sendTelegramDebug(chatId, replyToMessageId, text) {
     if (!BOT_TOKEN || !chatId) return;
 
+    const body = {
+        chat_id: chatId,
+        text: text.slice(0, 3500),
+        disable_notification: true,
+
+        // ✅ робимо debug відповіддю / коментарем до поста
+        reply_parameters: {
+            message_id: replyToMessageId,
+            allow_sending_without_reply: true,
+        },
+    };
+
     try {
-        await fetch(`${TG_API}/sendMessage`, {
+        const res = await fetch(`${TG_API}/sendMessage`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
             },
-            body: JSON.stringify({
-                chat_id: chatId,
-                text: text.slice(0, 3500),
-                disable_notification: true,
-            }),
+            body: JSON.stringify(body),
         });
+
+        if (!res.ok) {
+            console.error("DEBUG SEND ERROR:", res.status, await res.text());
+        }
     } catch (e) {
         console.error("DEBUG SEND ERROR:", e.message);
     }
-}
-
-function normalizeText(text = "") {
-    return String(text)
-        .toLowerCase()
-        .replace(/[’`]/g, "'")
-        .replace(/\s+/g, " ")
-        .replace(/[^\p{L}\p{N}\s:'|-]/gu, "")
-        .trim();
 }
 
 function getProfileText(msg) {
@@ -477,7 +480,11 @@ export default async function handler(req, res) {
 
         // 🔥 Коротка інформація прямо в Telegram
         if (msg?.chat?.id && !text.startsWith("BOT DEBUG")) {
-            await sendTelegramDebug(msg.chat.id, `BOT DEBUG SHORT\n\n${cut(debugShort, 3500)}`);
+            await sendTelegramDebug(
+                msg.chat.id,
+                msg.message_id,
+                `BOT DEBUG SHORT\n\n${cut(debugShort, 3500)}`
+            );
         }
 
         if (msg && !text.startsWith("BOT DEBUG")) {
