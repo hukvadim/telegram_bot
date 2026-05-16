@@ -1,8 +1,7 @@
 {
-  "name": "telegram_bot",
+  "name": "telegram-photo-ids-bot",
   "version": "1.0.0",
   "type": "module",
-  "main": "bot.js",
   "scripts": {
     "dev": "vercel dev",
     "deploy": "vercel --prod"
@@ -10,10 +9,5 @@
   "engines": {
     "node": "22.x"
   },
-  "license": "ISC",
-  "dependencies": {
-    "dotenv": "^17.4.2",
-    "input": "^1.0.1",
-    "telegram": "^2.26.22"
-  }
+  "license": "ISC"
 }
