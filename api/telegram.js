@@ -63,8 +63,6 @@ export default async function handler(req, res) {
 
     const profileId = getProfileId(msg)
 
-    console.log('PROFILE_ID:', profileId)
-
     if (msg?.chat?.id && profileId) {
       await sendTelegramText(
         msg.chat.id,
@@ -72,7 +70,7 @@ export default async function handler(req, res) {
       )
     }
 
-    return res.status(200).send(profileId)
+    return res.status(200).send('PROFILE_ID:' +profileId)
   } catch (error) {
     console.error('TELEGRAM_ERROR:', error)
 
