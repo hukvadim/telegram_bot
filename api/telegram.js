@@ -1,11 +1,12 @@
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET
 const BOT_TOKEN = process.env.BOT_TOKEN
+
 const TG_API = BOT_TOKEN
   ? `https://api.telegram.org/bot${BOT_TOKEN}`
   : ''
 
 async function sendTelegramText(chatId, text) {
-  if (!BOT_TOKEN || !chatId) return
+  if (!BOT_TOKEN || !chatId || !text) return
 
   await fetch(`${TG_API}/sendMessage`, {
     method: 'POST',
@@ -14,7 +15,8 @@ async function sendTelegramText(chatId, text) {
     },
     body: JSON.stringify({
       chat_id: chatId,
-      text
+      text,
+      disable_notification: true
     })
   })
 }
@@ -22,25 +24,37 @@ async function sendTelegramText(chatId, text) {
 function getMainMessage(update = {}) {
   return (
     update.message ||
-    update.edited_message ||
     update.channel_post ||
-    update.edited_channel_post ||
     null
   )
 }
 
 function getProfileId(msg = {}) {
-  // VIDEO
   if (msg?.video?.file_unique_id) {
     return msg.video.file_unique_id
   }
 
-  // PHOTO
   if (Array.isArray(msg.photo) && msg.photo.length > 0) {
     return msg.photo[0]?.file_unique_id || ''
   }
 
   return ''
+}
+
+function getProfileText(msg = {}) {
+  return msg.caption || msg.text || ''
+}
+
+function buildProfileResponse(msg = {}) {
+  const profileId = getProfileId(msg)
+  const profileText = getProfileText(msg)
+
+  if (!profileId) return ''
+
+  return [
+    `PROFILE_ID:${profileId}`,
+    `PROFILE_TEXT:${profileText}`
+  ].join('\n')
 }
 
 export default async function handler(req, res) {
@@ -49,9 +63,18 @@ export default async function handler(req, res) {
       return res.status(200).send('')
     }
 
+    const secretHeader =
+      req.headers['x-telegram-bot-api-secret-token']
+
+    if (
+      WEBHOOK_SECRET &&
+      secretHeader !== WEBHOOK_SECRET
+    ) {
+      return res.status(403).send('forbidden')
+    }
+
     const update = req.body
 
-    // IGNORE EDITS
     if (
       update.edited_message ||
       update.edited_channel_post
@@ -61,16 +84,13 @@ export default async function handler(req, res) {
 
     const msg = getMainMessage(update)
 
-    const profileId = getProfileId(msg)
+    const responseText = buildProfileResponse(msg)
 
-    if (msg?.chat?.id && profileId) {
-      await sendTelegramText(
-        msg.chat.id,
-        profileId
-      )
+    if (msg?.chat?.id && responseText) {
+      await sendTelegramText(msg.chat.id, responseText)
     }
 
-    return res.status(200).send('PROFILE_ID:' +profileId)
+    return res.status(200).send(responseText)
   } catch (error) {
     console.error('TELEGRAM_ERROR:', error)
 

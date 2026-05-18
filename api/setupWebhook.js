@@ -32,7 +32,7 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           url: webhookUrl,
           secret_token: WEBHOOK_SECRET,
-          allowed_updates: ["message", "channel_post", "edited_channel_post"],
+          allowed_updates: ["message", "channel_post"],
           drop_pending_updates: true,
         }),
       }
