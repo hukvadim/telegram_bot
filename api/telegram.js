@@ -136,6 +136,7 @@ export default async function handler(req, res) {
     }
 
     const msg = getMainMessage(req.body);
+    console.log("msg: ", msg);
     const text = getText(msg);
     const photoDebug = buildPhotoDebug(msg);
 
