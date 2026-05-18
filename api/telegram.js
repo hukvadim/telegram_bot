@@ -49,22 +49,27 @@ export default async function handler(req, res) {
       return res.status(200).send('')
     }
 
-    const secretHeader =
-      req.headers['x-telegram-bot-api-secret-token']
+    const update = req.body
 
+    // IGNORE EDITS
     if (
-      WEBHOOK_SECRET &&
-      secretHeader !== WEBHOOK_SECRET
+      update.edited_message ||
+      update.edited_channel_post
     ) {
-      return res.status(403).send('forbidden')
+      return res.status(200).send('')
     }
 
-    const msg = getMainMessage(req.body)
+    const msg = getMainMessage(update)
 
     const profileId = getProfileId(msg)
 
+    console.log('PROFILE_ID:', profileId)
+
     if (msg?.chat?.id && profileId) {
-      await sendTelegramText(msg.chat.id, profileId)
+      await sendTelegramText(
+        msg.chat.id,
+        profileId
+      )
     }
 
     return res.status(200).send(profileId)
