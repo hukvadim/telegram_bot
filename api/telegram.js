@@ -1,4 +1,5 @@
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET
+const BOT_TOKEN = process.env.BOT_TOKEN
 const TG_API = BOT_TOKEN
   ? `https://api.telegram.org/bot${BOT_TOKEN}`
   : ''
