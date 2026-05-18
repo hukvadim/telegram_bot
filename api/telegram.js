@@ -1,4 +1,22 @@
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET
+const TG_API = BOT_TOKEN
+  ? `https://api.telegram.org/bot${BOT_TOKEN}`
+  : ''
+
+async function sendTelegramText(chatId, text) {
+  if (!BOT_TOKEN || !chatId) return
+
+  await fetch(`${TG_API}/sendMessage`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text
+    })
+  })
+}
 
 function getMainMessage(update = {}) {
   return (
@@ -44,7 +62,9 @@ export default async function handler(req, res) {
 
     const profileId = getProfileId(msg)
 
-    console.log('PROFILE_ID:', profileId)
+    if (msg?.chat?.id && profileId) {
+      await sendTelegramText(msg.chat.id, profileId)
+    }
 
     return res.status(200).send(profileId)
   } catch (error) {
